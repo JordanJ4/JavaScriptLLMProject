@@ -1,53 +1,22 @@
-name: Deploy Node.js Azure Function App
+name: Deploy Azure Function App
 
 on:
   push:
     branches:
       - main
 
-env:
-  AZURE_FUNCTIONAPP_NAME: javaScriptAzureLLMProject
-  NODE_VERSION: '18'
-
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout
+      # 1️⃣ Pull your repo code into the runner
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # 2️⃣ LOGIN TO AZURE (THIS IS WHAT YOU WERE MISSING)
+      - name: Azure Login
+        uses: azure/login@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 3️⃣ Install dependencies
-      - name: Install dependencies
-        run: npm install
-
-      # 4️⃣ Build (safe: skips if not present)
-      - name: Build
-        run: |
-          if npm run | grep -q "build"; then
-            npm run build
-          else
-            echo "No build script found, skipping"
-          fi
-
-      # 5️⃣ Zip the app
-      - name: Create deployment package
-        run: |
-          zip -r functionapp.zip . \
-            -x "*.git*" \
-            -x "node_modules/**/.cache/*"
-
-      # 6️⃣ Deploy
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          package: functionapp.zip
