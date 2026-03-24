@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  AZURE_FUNCTIONAPP_NAME: javaScriptAzureLLMProject
+  AZURE_FUNCTIONAPP_NAME: javascriptazurellmproject2
   PACKAGE_PATH: "."
   NODE_VERSION: "20.x"
 
