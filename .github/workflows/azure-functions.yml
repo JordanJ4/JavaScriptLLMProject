@@ -7,8 +7,8 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_NAME: javaScriptAzureLLMProject
-  PACKAGE_PATH: '.'
-  NODE_VERSION: '20.x'
+  PACKAGE_PATH: "."
+  NODE_VERSION: "20.x"
 
 jobs:
   build-and-deploy:
@@ -24,7 +24,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
