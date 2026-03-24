@@ -1,8 +1,12 @@
 {
-  "name": "javascript-azure-llm-project",
+  "name": "javascriptazurellmproject",
   "version": "1.0.0",
-  "private": true,
+  "description": "Azure Function for LLM coach endpoint",
+  "main": "coach/index.js",
   "scripts": {
-    "start": "func start"
-  }
+    "start": "func start",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {},
+  "devDependencies": {}
 }
