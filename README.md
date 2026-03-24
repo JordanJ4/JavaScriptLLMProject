@@ -1,23 +1,14 @@
 # JavaScript Azure LLM Project
 
-    Azure Function (Node.js) deployed via GitHub Actions.
+Azure Function (Node.js) deployed with GitHub Actions.
 
-    ## Endpoint
-    POST /api/coach
+## Endpoint
 
-    ## Request Body
-    ```json
-    {
-      "input": "string",
-      "persona": "string",
-      "scenario": "string"
-    }
-    ```
+POST /api/coach
 
-    ## Response
-    ```json
-    {
-      "reply": "• bullet
-• bullet"
-    }
-    ```
+## Request body
+
+```json
+{
+  "prompt": "Hello"
+}
