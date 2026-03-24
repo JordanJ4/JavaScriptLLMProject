@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  AZURE_FUNCTIONAPP_NAME: javascriptazurellmproject
+  AZURE_FUNCTIONAPP_NAME: javaScriptAzureLLMProject
   PACKAGE_PATH: '.'
   NODE_VERSION: '20.x'
 
@@ -32,3 +32,5 @@ jobs:
           app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
           package: ${{ env.PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          sku: flexconsumption
+          remote-build: true
