@@ -1,27 +1,28 @@
 module.exports = async function (context, req) {
   try {
-    const { input, persona, scenario } = req.body || {};
-
-    if (!input) {
-      context.res = {
-        status: 400,
-        body: { error: "Missing input" }
-      };
-      return;
-    }
+    const prompt = req.body?.prompt || req.query?.prompt || "Hello";
 
     context.res = {
       status: 200,
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: {
-        reply: `• Acknowledge the concern
-• Reference policy
-• Offer next steps`
+        ok: true,
+        message: "Azure Function is running",
+        prompt
       }
     };
-  } catch (err) {
+  } catch (error) {
     context.res = {
       status: 500,
-      body: { error: "Server error" }
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: {
+        ok: false,
+        error: error.message
+      }
     };
   }
 };
