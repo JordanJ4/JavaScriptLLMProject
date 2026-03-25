@@ -10,5 +10,5 @@ POST /api/coach
 
 ```json
 {
-  "prompt": "Hello"
+  "prompt": "Yurr"
 }
