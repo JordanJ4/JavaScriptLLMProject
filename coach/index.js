@@ -1,17 +1,17 @@
 module.exports = async function (context, req) {
-  const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
+  const origin = req.headers.origin || "*";
 
-  context.log("FUNCTION HIT");
-  context.log("METHOD:", req.method);
+  const headers = {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Content-Type": "application/json"
+  };
 
   if (req.method === "OPTIONS") {
     context.res = {
       status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": allowedOrigin,
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
+      headers
     };
     return;
   }
@@ -19,10 +19,7 @@ module.exports = async function (context, req) {
   if (req.method === "GET") {
     context.res = {
       status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": allowedOrigin,
-        "Content-Type": "application/json"
-      },
+      headers,
       body: {
         reply: "SUCCESS: Azure Function is alive"
       }
@@ -32,10 +29,7 @@ module.exports = async function (context, req) {
 
   context.res = {
     status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": allowedOrigin,
-      "Content-Type": "application/json"
-    },
+    headers,
     body: {
       reply: "SUCCESS: Storyline reached Azure Function"
     }
