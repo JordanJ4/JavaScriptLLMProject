@@ -16,17 +16,6 @@ module.exports = async function (context, req) {
     return;
   }
 
-  if (req.method === "GET") {
-    context.res = {
-      status: 200,
-      headers,
-      body: {
-        reply: "SUCCESS: Azure Function is alive"
-      }
-    };
-    return;
-  }
-
   try {
     const { input } = req.body || {};
 
@@ -39,81 +28,61 @@ module.exports = async function (context, req) {
       return;
     }
 
-    const openaiResponse = await fetch(process.env.LLM_API_URL, {
+    context.log("Calling LLM gateway...");
+
+    const response = await fetch(process.env.LLM_API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${process.env.LLM_CLIENT_SECRET}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
-        input: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: "Return a short helpful response for an e-learning prototype."
-              }
-            ]
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: input
-              }
-            ]
-          }
-        ]
+        input: input
       })
     });
 
-    const data = await openaiResponse.json();
+    const text = await response.text();
+    context.log("Gateway response:", text);
 
-    if (!openaiResponse.ok) {
+    let data = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
       context.res = {
-        status: openaiResponse.status,
+        status: response.status,
         headers,
         body: {
-          error: data?.error?.message || "OpenAI request failed"
+          error: data.error || data.raw || "Gateway failed"
         }
       };
       return;
     }
 
-    let reply = "";
-
-    if (typeof data.output_text === "string") {
-      reply = data.output_text.trim();
-    } else if (Array.isArray(data.output)) {
-      const parts = [];
-      for (const item of data.output) {
-        if (Array.isArray(item.content)) {
-          for (const content of item.content) {
-            if (content.type === "output_text" && content.text) {
-              parts.push(content.text);
-            }
-          }
-        }
-      }
-      reply = parts.join("\n").trim();
-    }
+    const reply =
+      data.reply ||
+      data.output ||
+      data.text ||
+      data.answer ||
+      "No reply returned";
 
     context.res = {
       status: 200,
       headers,
       body: {
-        reply: reply || "No reply returned"
+        reply: reply
       }
     };
+
   } catch (error) {
     context.res = {
       status: 500,
       headers,
       body: {
-        error: error.message || "Server error"
+        error: error.message
       }
     };
   }
