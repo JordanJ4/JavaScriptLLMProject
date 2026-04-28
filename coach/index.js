@@ -1,3 +1,5 @@
+const axios = require("axios");
+
 module.exports = async function (context, req) {
   const origin = req.headers.origin || "*";
 
@@ -49,45 +51,31 @@ module.exports = async function (context, req) {
       return;
     }
 
-    context.log("Calling LLM gateway...");
+    context.log("Calling GAIA gateway...");
+    context.log("GAIA_GATEWAY_URL:", gatewayUrl);
+    context.log("JWT exists:", !!jwt);
+    context.log("JWT first 20 chars:", jwt ? jwt.substring(0, 20) : "missing");
 
-    const response = await fetch(gatewayUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${jwt}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
+    const response = await axios.post(
+      gatewayUrl,
+      {
         messages: [
           {
             role: "user",
             content: input
           }
         ]
-      })
-    });
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 30000
+      }
+    );
 
-    const text = await response.text();
-    context.log("Gateway response:", text);
-
-    let data = {};
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
-
-    if (!response.ok) {
-      context.res = {
-        status: response.status,
-        headers,
-        body: {
-          error: data.error || data.raw || "Gateway failed",
-          details: data
-        }
-      };
-      return;
-    }
+    const data = response.data;
 
     const reply =
       data.reply ||
@@ -101,17 +89,24 @@ module.exports = async function (context, req) {
       status: 200,
       headers,
       body: {
-        reply: reply,
+        reply,
         raw: data
       }
     };
 
   } catch (error) {
+    context.log("Full error:", error);
+    context.log("Error message:", error.message);
+    context.log("Error status:", error.response?.status);
+    context.log("Error response data:", error.response?.data);
+
     context.res = {
-      status: 500,
+      status: error.response?.status || 500,
       headers,
       body: {
-        error: error.message
+        error: error.message,
+        status: error.response?.status || null,
+        details: error.response?.data || null
       }
     };
   }
