@@ -30,6 +30,10 @@ module.exports = async function (context, req) {
 
     const gatewayUrl = process.env.GAIA_GATEWAY_URL;
     const jwt = process.env.GAIA_JWT;
+    const appName = process.env.GAIA_APP_NAME;
+    const modelName = process.env.GAIA_MODEL_NAME;
+    const partnerName = process.env.GAIA_PARTNER_NAME;
+    const clientId = process.env.GAIA_CLIENT_ID;
 
     if (!gatewayUrl) {
       context.res = {
@@ -49,13 +53,36 @@ module.exports = async function (context, req) {
       return;
     }
 
+    if (!appName || !modelName || !partnerName || !clientId) {
+      context.res = {
+        status: 500,
+        headers,
+        body: {
+          error: "Missing one or more required GAIA header settings",
+          required: [
+            "GAIA_APP_NAME",
+            "GAIA_MODEL_NAME",
+            "GAIA_PARTNER_NAME",
+            "GAIA_CLIENT_ID"
+          ]
+        }
+      };
+      return;
+    }
+
     const response = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${jwt}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-app-name": appName,
+        "x-model-name": modelName,
+        "x-partner-name": partnerName,
+        "x-client-id": clientId
       },
       body: JSON.stringify({
+        sessionId: "test",
+        provider: "openai",
         messages: [
           {
             role: "user",
@@ -81,9 +108,6 @@ module.exports = async function (context, req) {
     };
 
   } catch (error) {
-    context.log("Full error:", error);
-    context.log("Cause:", error.cause);
-
     context.res = {
       status: 500,
       headers,
