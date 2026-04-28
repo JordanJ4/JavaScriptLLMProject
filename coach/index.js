@@ -49,11 +49,6 @@ module.exports = async function (context, req) {
       return;
     }
 
-    context.log("Calling GAIA gateway...");
-    context.log("GAIA_GATEWAY_URL:", gatewayUrl);
-    context.log("JWT exists:", !!jwt);
-    context.log("JWT first 20 chars:", jwt ? jwt.substring(0, 20) : "missing");
-
     const response = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
@@ -71,7 +66,6 @@ module.exports = async function (context, req) {
     });
 
     const text = await response.text();
-    context.log("Raw gateway response:", text);
 
     let data;
     try {
@@ -80,44 +74,26 @@ module.exports = async function (context, req) {
       data = { raw: text };
     }
 
-    if (!response.ok) {
-      context.res = {
-        status: response.status,
-        headers,
-        body: {
-          error: "GAIA request failed",
-          details: data
-        }
-      };
-      return;
-    }
-
-    const reply =
-      data.reply ||
-      data.output ||
-      data.text ||
-      data.answer ||
-      data.choices?.[0]?.message?.content ||
-      "No reply returned";
-
     context.res = {
-      status: 200,
+      status: response.status,
       headers,
-      body: {
-        reply,
-        raw: data
-      }
+      body: data
     };
+
   } catch (error) {
     context.log("Full error:", error);
-    context.log("Error message:", error.message);
-    context.log("Error stack:", error.stack);
+    context.log("Cause:", error.cause);
 
     context.res = {
       status: 500,
       headers,
       body: {
         error: error.message,
+        cause: error.cause ? {
+          message: error.cause.message,
+          code: error.cause.code,
+          name: error.cause.name
+        } : null,
         stack: error.stack
       }
     };
