@@ -28,16 +28,42 @@ module.exports = async function (context, req) {
       return;
     }
 
+    const gatewayUrl = process.env.GAIA_GATEWAY_URL;
+    const jwt = process.env.GAIA_JWT;
+
+    if (!gatewayUrl) {
+      context.res = {
+        status: 500,
+        headers,
+        body: { error: "Missing GAIA_GATEWAY_URL app setting" }
+      };
+      return;
+    }
+
+    if (!jwt) {
+      context.res = {
+        status: 500,
+        headers,
+        body: { error: "Missing GAIA_JWT app setting" }
+      };
+      return;
+    }
+
     context.log("Calling LLM gateway...");
 
-    const response = await fetch(process.env.LLM_API_URL, {
+    const response = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.LLM_CLIENT_SECRET}`,
+        "Authorization": `Bearer ${jwt}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        input: input
+        messages: [
+          {
+            role: "user",
+            content: input
+          }
+        ]
       })
     });
 
@@ -56,7 +82,8 @@ module.exports = async function (context, req) {
         status: response.status,
         headers,
         body: {
-          error: data.error || data.raw || "Gateway failed"
+          error: data.error || data.raw || "Gateway failed",
+          details: data
         }
       };
       return;
@@ -67,13 +94,15 @@ module.exports = async function (context, req) {
       data.output ||
       data.text ||
       data.answer ||
+      data.choices?.[0]?.message?.content ||
       "No reply returned";
 
     context.res = {
       status: 200,
       headers,
       body: {
-        reply: reply
+        reply: reply,
+        raw: data
       }
     };
 
