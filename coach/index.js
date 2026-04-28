@@ -1,5 +1,3 @@
-const axios = require("axios");
-
 module.exports = async function (context, req) {
   const origin = req.headers.origin || "*";
 
@@ -56,26 +54,43 @@ module.exports = async function (context, req) {
     context.log("JWT exists:", !!jwt);
     context.log("JWT first 20 chars:", jwt ? jwt.substring(0, 20) : "missing");
 
-    const response = await axios.post(
-      gatewayUrl,
-      {
+    const response = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${jwt}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
         messages: [
           {
             role: "user",
             content: input
           }
         ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 30000
-      }
-    );
+      })
+    });
 
-    const data = response.data;
+    const text = await response.text();
+    context.log("Raw gateway response:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
+      context.res = {
+        status: response.status,
+        headers,
+        body: {
+          error: "GAIA request failed",
+          details: data
+        }
+      };
+      return;
+    }
 
     const reply =
       data.reply ||
@@ -93,20 +108,17 @@ module.exports = async function (context, req) {
         raw: data
       }
     };
-
   } catch (error) {
     context.log("Full error:", error);
     context.log("Error message:", error.message);
-    context.log("Error status:", error.response?.status);
-    context.log("Error response data:", error.response?.data);
+    context.log("Error stack:", error.stack);
 
     context.res = {
-      status: error.response?.status || 500,
+      status: 500,
       headers,
       body: {
         error: error.message,
-        status: error.response?.status || null,
-        details: error.response?.data || null
+        stack: error.stack
       }
     };
   }
