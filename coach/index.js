@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { Agent } = require("undici");
+const https = require("https");
 
 module.exports = async function (context, req) {
   const origin = req.headers.origin || "*";
@@ -81,48 +81,70 @@ module.exports = async function (context, req) {
 
     const caCert = fs.readFileSync(certPath, "utf8");
 
-    const dispatcher = new Agent({
-      connect: {
-        ca: caCert
-      }
+    const payload = JSON.stringify({
+      sessionId: "test",
+      provider: "openai",
+      messages: [
+        {
+          role: "user",
+          content: input
+        }
+      ]
     });
 
-    const response = await fetch(gatewayUrl, {
+    const url = new URL(gatewayUrl);
+
+    const options = {
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + (url.search || ""),
       method: "POST",
-      dispatcher,
+      ca: caCert,
       headers: {
         "Authorization": `Bearer ${jwt}`,
         "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
         "x-app-name": appName,
         "x-model-name": modelName,
         "x-partner-name": partnerName,
         "x-client-id": clientId
-      },
-      body: JSON.stringify({
-        sessionId: "test",
-        provider: "openai",
-        messages: [
-          {
-            role: "user",
-            content: input
-          }
-        ]
-      })
+      }
+    };
+
+    const result = await new Promise((resolve, reject) => {
+      const request = https.request(options, (response) => {
+        let body = "";
+
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        response.on("end", () => {
+          resolve({
+            statusCode: response.statusCode || 500,
+            body
+          });
+        });
+      });
+
+      request.on("error", reject);
+      request.write(payload);
+      request.end();
     });
 
-    const text = await response.text();
-    context.log("GAIA raw response:", text);
+    context.log("GAIA raw response:", result.body);
 
     let data;
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(result.body);
     } catch {
-      data = { raw: text };
+      data = { raw: result.body };
     }
 
-    if (!response.ok) {
+    if (result.statusCode < 200 || result.statusCode >= 300) {
       context.res = {
-        status: response.status,
+        status: result.statusCode,
         headers,
         body: {
           error: "GAIA request failed",
@@ -151,18 +173,13 @@ module.exports = async function (context, req) {
 
   } catch (error) {
     context.log("Full error:", error);
-    context.log("Cause:", error.cause);
 
     context.res = {
       status: 500,
       headers,
       body: {
         error: error.message,
-        cause: error.cause ? {
-          message: error.cause.message,
-          code: error.cause.code,
-          name: error.cause.name
-        } : null,
+        code: error.code || null,
         stack: error.stack
       }
     };
