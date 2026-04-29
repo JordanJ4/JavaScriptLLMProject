@@ -1,4 +1,6 @@
 module.exports = async function (context, req) {
+  const fs = require("fs");
+
   const origin = req.headers.origin || "*";
 
   const headers = {
@@ -8,6 +10,7 @@ module.exports = async function (context, req) {
     "Content-Type": "application/json"
   };
 
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     context.res = {
       status: 204,
@@ -28,6 +31,19 @@ module.exports = async function (context, req) {
       return;
     }
 
+    // ===== DEBUG CERT LOADING =====
+    const certPath = "/home/site/wwwroot/coach/rootca.cer";
+
+    context.log("NODE_EXTRA_CA_CERTS:", process.env.NODE_EXTRA_CA_CERTS);
+    context.log("Checking cert path:", certPath);
+    context.log("Exists:", fs.existsSync(certPath));
+
+    if (fs.existsSync(certPath)) {
+      const firstLine = fs.readFileSync(certPath, "utf8").split("\n")[0];
+      context.log("First line:", firstLine);
+    }
+    // ==============================
+
     const gatewayUrl = process.env.GAIA_GATEWAY_URL;
     const jwt = process.env.GAIA_JWT;
     const appName = process.env.GAIA_APP_NAME;
@@ -35,36 +51,13 @@ module.exports = async function (context, req) {
     const partnerName = process.env.GAIA_PARTNER_NAME;
     const clientId = process.env.GAIA_CLIENT_ID;
 
-    if (!gatewayUrl) {
-      context.res = {
-        status: 500,
-        headers,
-        body: { error: "Missing GAIA_GATEWAY_URL app setting" }
-      };
-      return;
-    }
-
-    if (!jwt) {
-      context.res = {
-        status: 500,
-        headers,
-        body: { error: "Missing GAIA_JWT app setting" }
-      };
-      return;
-    }
-
-    if (!appName || !modelName || !partnerName || !clientId) {
+    if (!gatewayUrl || !jwt) {
       context.res = {
         status: 500,
         headers,
         body: {
-          error: "Missing one or more required GAIA header settings",
-          required: [
-            "GAIA_APP_NAME",
-            "GAIA_MODEL_NAME",
-            "GAIA_PARTNER_NAME",
-            "GAIA_CLIENT_ID"
-          ]
+          error: "Missing GAIA settings",
+          required: ["GAIA_GATEWAY_URL", "GAIA_JWT"]
         }
       };
       return;
@@ -101,13 +94,39 @@ module.exports = async function (context, req) {
       data = { raw: text };
     }
 
+    if (!response.ok) {
+      context.res = {
+        status: response.status,
+        headers,
+        body: {
+          error: "GAIA request failed",
+          details: data
+        }
+      };
+      return;
+    }
+
+    const reply =
+      data.reply ||
+      data.output ||
+      data.text ||
+      data.answer ||
+      data.choices?.[0]?.message?.content ||
+      "No reply returned";
+
     context.res = {
-      status: response.status,
+      status: 200,
       headers,
-      body: data
+      body: {
+        reply,
+        raw: data
+      }
     };
 
   } catch (error) {
+    context.log("Full error:", error);
+    context.log("Cause:", error.cause);
+
     context.res = {
       status: 500,
       headers,
