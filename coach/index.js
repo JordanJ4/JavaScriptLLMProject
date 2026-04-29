@@ -39,41 +39,29 @@ module.exports = async function (context, req) {
     const partnerName = process.env.GAIA_PARTNER_NAME;
     const clientId = process.env.GAIA_CLIENT_ID;
 
-    context.log("NODE_EXTRA_CA_CERTS:", process.env.NODE_EXTRA_CA_CERTS);
-    context.log("Checking cert path:", certPath);
-    context.log("Exists:", fs.existsSync(certPath));
+    // ===== DEBUG LOGS =====
+    context.log("===== GAIA DEBUG START =====");
 
-    if (fs.existsSync(certPath)) {
-      const firstLine = fs.readFileSync(certPath, "utf8").split("\n")[0];
-      context.log("First line:", firstLine);
-    }
+    context.log("GAIA_GATEWAY_URL:", gatewayUrl);
+    context.log("GAIA_APP_NAME:", appName);
+    context.log("GAIA_MODEL_NAME:", modelName);
+    context.log("GAIA_PARTNER_NAME:", partnerName);
+    context.log("GAIA_CLIENT_ID:", clientId);
+
+    context.log("JWT length:", jwt ? jwt.length : "missing");
+    context.log("JWT starts with:", jwt ? jwt.substring(0, 20) : "missing");
+
+    context.log("Cert exists:", fs.existsSync(certPath));
+
+    context.log("===== GAIA DEBUG END =====");
+    // ======================
 
     if (!gatewayUrl || !jwt || !appName || !modelName || !partnerName || !clientId) {
       context.res = {
         status: 500,
         headers,
         body: {
-          error: "Missing required app settings",
-          required: [
-            "GAIA_GATEWAY_URL",
-            "GAIA_JWT",
-            "GAIA_APP_NAME",
-            "GAIA_MODEL_NAME",
-            "GAIA_PARTNER_NAME",
-            "GAIA_CLIENT_ID"
-          ]
-        }
-      };
-      return;
-    }
-
-    if (!fs.existsSync(certPath)) {
-      context.res = {
-        status: 500,
-        headers,
-        body: {
-          error: "CA certificate file not found",
-          certPath
+          error: "Missing required app settings"
         }
       };
       return;
@@ -98,7 +86,7 @@ module.exports = async function (context, req) {
       protocol: url.protocol,
       hostname: url.hostname,
       port: url.port || 443,
-      path: url.pathname + (url.search || ""),
+      path: url.pathname,
       method: "POST",
       ca: caCert,
       headers: {
@@ -111,6 +99,13 @@ module.exports = async function (context, req) {
         "x-client-id": clientId
       }
     };
+
+    context.log("Sending headers:", {
+      "x-app-name": appName,
+      "x-model-name": modelName,
+      "x-partner-name": partnerName,
+      "x-client-id": clientId
+    });
 
     const result = await new Promise((resolve, reject) => {
       const request = https.request(options, (response) => {
@@ -142,32 +137,12 @@ module.exports = async function (context, req) {
       data = { raw: result.body };
     }
 
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      context.res = {
-        status: result.statusCode,
-        headers,
-        body: {
-          error: "GAIA request failed",
-          details: data
-        }
-      };
-      return;
-    }
-
-    const reply =
-      data.reply ||
-      data.output ||
-      data.text ||
-      data.answer ||
-      data.choices?.[0]?.message?.content ||
-      "No reply returned";
-
     context.res = {
-      status: 200,
+      status: result.statusCode,
       headers,
       body: {
-        reply,
-        raw: data
+        debug: true,
+        gaiaResponse: data
       }
     };
 
@@ -178,9 +153,7 @@ module.exports = async function (context, req) {
       status: 500,
       headers,
       body: {
-        error: error.message,
-        code: error.code || null,
-        stack: error.stack
+        error: error.message
       }
     };
   }
