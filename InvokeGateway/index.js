@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { Agent } = require("undici");
 
 module.exports = async function (context, req) {
   const certPath = process.env.NODE_EXTRA_CA_CERTS;
@@ -64,6 +65,9 @@ module.exports = async function (context, req) {
 
     context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
 
+    const ca = fs.readFileSync(certPath, "utf8");
+    const dispatcher = new Agent({ connect: { ca } });
+
     const gatewayResp = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
@@ -73,7 +77,8 @@ module.exports = async function (context, req) {
         "x-partner-name": "IDStoryLine",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(gatewayPayload)
+      body: JSON.stringify(gatewayPayload),
+      dispatcher
     });
 
     const gatewayText = await gatewayResp.text();
