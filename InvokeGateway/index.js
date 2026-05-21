@@ -110,6 +110,7 @@ module.exports = async function (context, req) {
     );
 
     context.log("GATEWAY STATUS:", gatewayResult.status);
+    context.log("GATEWAY RESPONSE:", gatewayResult.body);
 
     context.res = {
       status: gatewayResult.status,
