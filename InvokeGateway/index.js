@@ -1,102 +1,101 @@
 const fs = require("fs");
 
 module.exports = async function (context, req) {
-    context.log("NODE_EXTRA_CA_CERTS =", process.env.NODE_EXTRA_CA_CERTS);
-    context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
+  context.log("NODE_EXTRA_CA_CERTS =", process.env.NODE_EXTRA_CA_CERTS);
+  context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
 
-    async function getAccessToken() {
-        context.log("ABOUT TO REQUEST TOKEN:", process.env.TOKEN_URL);
+  try {
+    const clientId = process.env.CLIENT_ID;
+    const clientSecret = process.env.CLIENT_SECRET;
+    const tokenUrl = process.env.TOKEN_URL;
+    const scope = process.env.SCOPE;
+    const gatewayUrl = process.env.GATEWAY_URL;
 
-        const encoded = Buffer.from(
-            `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
-        ).toString("base64");
+    const userInput = req.body?.input;
 
-        const tokenResponse = await fetch(process.env.TOKEN_URL, {
-            method: "POST",
-            headers: {
-                "Authorization": `Basic ${encoded}`,
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: new URLSearchParams({
-                grant_type: "client_credentials",
-                scope: process.env.SCOPE
-            })
-        });
-
-        const tokenText = await tokenResponse.text();
-
-        context.log("TOKEN STATUS:", tokenResponse.status);
-
-        if (!tokenResponse.ok) {
-            throw new Error(`Token request failed ${tokenResponse.status}: ${tokenText}`);
-        }
-
-        const tokenData = JSON.parse(tokenText);
-
-        if (!tokenData.access_token) {
-            throw new Error("Token response did not include access_token");
-        }
-
-        context.log("TOKEN RECEIVED: yes");
-
-        return tokenData.access_token;
+    if (!userInput) {
+      context.res = {
+        status: 400,
+        body: { error: "Missing input" }
+      };
+      return;
     }
 
-    try {
-        const userInput = req.body?.input;
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-        if (!userInput) {
-            context.res = {
-                status: 400,
-                body: { error: "Missing input" }
-            };
-            return;
-        }
+    context.log("ABOUT TO REQUEST TOKEN:", tokenUrl);
 
-        const gatewayUrl = process.env.GATEWAY_URL;
+    const tokenResp = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: `grant_type=client_credentials&scope=${encodeURIComponent(scope)}`
+    });
 
-        if (!gatewayUrl) {
-            throw new Error("GATEWAY_URL environment variable missing");
-        }
+    const tokenText = await tokenResp.text();
+    context.log("TOKEN STATUS:", tokenResp.status);
 
-        const token = await getAccessToken();
+    const tokenJson = JSON.parse(tokenText);
+    const accessToken = tokenJson.access_token;
 
-        context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
-
-        const gatewayResponse = await fetch(gatewayUrl, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                input: userInput
-            })
-        });
-
-        const gatewayText = await gatewayResponse.text();
-
-        context.log("GATEWAY STATUS:", gatewayResponse.status);
-
-        context.res = {
-            status: gatewayResponse.status,
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: gatewayText
-        };
-
-    } catch (error) {
-        context.log.error("AZURE FUNCTION ERROR MESSAGE:", error.message);
-        context.log.error("AZURE FUNCTION ERROR CAUSE:", error.cause);
-        context.log.error("AZURE FUNCTION ERROR STACK:", error.stack);
-
-        context.res = {
-            status: 500,
-            body: {
-                error: error.message,
-                cause: error.cause?.message || null
-            }
-        };
+    if (!accessToken) {
+      throw new Error("Token response did not include access_token");
     }
+
+    context.log("TOKEN RECEIVED: yes");
+
+    const gatewayPayload = {
+      provider: "openai",
+      sessionId: "test-session",
+      messages: [
+        {
+          role: "system",
+          id: null,
+          content: userInput
+        }
+      ],
+      temperature: 0.0,
+      scrub_pii: true
+    };
+
+    context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
+
+    const gatewayResp = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "x-app-name": "IDStoryLine",
+        "x-model-name": "gpt-4o-mini",
+        "x-partner-name": "IDStoryLine",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(gatewayPayload)
+    });
+
+    const gatewayText = await gatewayResp.text();
+    context.log("GATEWAY STATUS:", gatewayResp.status);
+
+    context.res = {
+      status: gatewayResp.status,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: gatewayText
+    };
+
+  } catch (error) {
+    context.log.error("AZURE FUNCTION ERROR MESSAGE:", error.message);
+    context.log.error("AZURE FUNCTION ERROR CAUSE:", error.cause);
+    context.log.error("AZURE FUNCTION ERROR STACK:", error.stack);
+
+    context.res = {
+      status: 500,
+      body: {
+        error: error.message,
+        cause: error.cause?.message || null
+      }
+    };
+  }
 };
