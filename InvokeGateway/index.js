@@ -1,14 +1,15 @@
+const fs = require("fs");
+
 module.exports = async function (context, req) {
+    context.log("NODE_EXTRA_CA_CERTS =", process.env.NODE_EXTRA_CA_CERTS);
+    context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
 
     async function getAccessToken() {
-        const clientId = process.env.CLIENT_ID;
-        const clientSecret = process.env.CLIENT_SECRET;
-        const tokenUrl = process.env.TOKEN_URL;
-        const scope = process.env.SCOPE;
+        const encoded = Buffer.from(
+            `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
+        ).toString("base64");
 
-        const encoded = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-        const response = await fetch(tokenUrl, {
+        const response = await fetch(process.env.TOKEN_URL, {
             method: "POST",
             headers: {
                 "Authorization": `Basic ${encoded}`,
@@ -16,39 +17,39 @@ module.exports = async function (context, req) {
             },
             body: new URLSearchParams({
                 grant_type: "client_credentials",
-                scope: scope
+                scope: process.env.SCOPE
             })
         });
 
+        const text = await response.text();
+
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Token request failed ${response.status}: ${errorText}`);
+            throw new Error(`Token request failed ${response.status}: ${text}`);
         }
 
-        const data = await response.json();
-
-        if (!data.access_token) {
-            throw new Error("No access token returned");
-        }
-
+        const data = JSON.parse(text);
         return data.access_token;
     }
 
     try {
+        const userInput = req.body?.input;
 
-        const userInput = req.body?.input || "Hello";
+        if (!userInput) {
+            context.res = {
+                status: 400,
+                body: { error: "Missing input" }
+            };
+            return;
+        }
 
-        // GET NEW TOKEN
         const token = await getAccessToken();
 
-        // GET GATEWAY URL FROM ENV VARIABLE
         const gatewayUrl = process.env.GATEWAY_URL;
 
         if (!gatewayUrl) {
             throw new Error("GATEWAY_URL environment variable missing");
         }
 
-        // CALL LLM GATEWAY
         const gatewayResponse = await fetch(gatewayUrl, {
             method: "POST",
             headers: {
@@ -71,13 +72,15 @@ module.exports = async function (context, req) {
         };
 
     } catch (error) {
-
-        context.log.error("AZURE FUNCTION ERROR:", error);
+        context.log.error("AZURE FUNCTION ERROR MESSAGE:", error.message);
+        context.log.error("AZURE FUNCTION ERROR CAUSE:", error.cause);
+        context.log.error("AZURE FUNCTION ERROR STACK:", error.stack);
 
         context.res = {
             status: 500,
             body: {
-                error: error.message
+                error: error.message,
+                cause: error.cause?.message || null
             }
         };
     }
