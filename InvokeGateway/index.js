@@ -33,7 +33,7 @@ module.exports = async function (context, req) {
     const token = await getAccessToken();
 
     // CALL LLM GATEWAY
-    const response = await fetch("YOUR_GATEWAY_URL", {
+    const response = await fetch("GATEWAY_URL", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
