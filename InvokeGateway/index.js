@@ -100,9 +100,9 @@ module.exports = async function (context, req) {
       gatewayUrl,
       {
         Authorization: `Bearer ${accessToken}`,
-        "x-app-name": "IDStoryLine",
-        "x-model-name": "gpt-4o-mini",
-        "x-partner-name": "IDStoryLine",
+        "x-app-name": "IDStprylineLLMNpr",
+        "x-model-name": "gpt-5",
+        "x-partner-name": "IDStprylineLLMNpr",
         "Content-Type": "application/json"
       },
       JSON.stringify(gatewayPayload),
