@@ -1,8 +1,10 @@
 const fs = require("fs");
 
 module.exports = async function (context, req) {
-  context.log("NODE_EXTRA_CA_CERTS =", process.env.NODE_EXTRA_CA_CERTS);
-  context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
+  const certPath = process.env.NODE_EXTRA_CA_CERTS;
+
+  context.log("NODE_EXTRA_CA_CERTS =", certPath);
+  context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
 
   try {
     const clientId = process.env.CLIENT_ID;
@@ -48,7 +50,7 @@ module.exports = async function (context, req) {
 
     const gatewayPayload = {
       provider: "openai",
-      sessionId: "test-session",
+      sessionId: "storyline-session",
       messages: [
         {
           role: "system",
