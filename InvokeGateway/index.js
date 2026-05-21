@@ -1,5 +1,34 @@
 const fs = require("fs");
-const { Agent } = require("undici");
+const https = require("https");
+
+function httpsPost(url, headers, body, ca) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const payload = typeof body === "string" ? body : JSON.stringify(body);
+
+    const options = {
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Length": Buffer.byteLength(payload)
+      },
+      ca
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => resolve({ status: res.statusCode, body: data }));
+    });
+
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
 
 module.exports = async function (context, req) {
   const certPath = process.env.NODE_EXTRA_CA_CERTS;
@@ -66,30 +95,28 @@ module.exports = async function (context, req) {
     context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
 
     const ca = fs.readFileSync(certPath, "utf8");
-    const dispatcher = new Agent({ connect: { ca } });
 
-    const gatewayResp = await fetch(gatewayUrl, {
-      method: "POST",
-      headers: {
+    const gatewayResult = await httpsPost(
+      gatewayUrl,
+      {
         Authorization: `Bearer ${accessToken}`,
         "x-app-name": "IDStoryLine",
         "x-model-name": "gpt-4o-mini",
         "x-partner-name": "IDStoryLine",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(gatewayPayload),
-      dispatcher
-    });
+      JSON.stringify(gatewayPayload),
+      ca
+    );
 
-    const gatewayText = await gatewayResp.text();
-    context.log("GATEWAY STATUS:", gatewayResp.status);
+    context.log("GATEWAY STATUS:", gatewayResult.status);
 
     context.res = {
-      status: gatewayResp.status,
+      status: gatewayResult.status,
       headers: {
         "Content-Type": "application/json"
       },
-      body: gatewayText
+      body: gatewayResult.body
     };
 
   } catch (error) {
