@@ -1,159 +1,149 @@
 const fs = require("fs");
 const https = require("https");
 
-module.exports = async function (context, req) {
-  const origin = req.headers.origin || "*";
+function httpsPost(url, headers, body, ca) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const payload = typeof body === "string" ? body : JSON.stringify(body);
 
-  const headers = {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Content-Type": "application/json"
-  };
-
-  if (req.method === "OPTIONS") {
-    context.res = {
-      status: 204,
-      headers
+    const options = {
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Length": Buffer.byteLength(payload)
+      },
+      ca
     };
-    return;
-  }
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => resolve({ status: res.statusCode, body: data }));
+    });
+
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+module.exports = async function (context, req) {
+  const certPath = process.env.NODE_EXTRA_CA_CERTS;
+
+  context.log("NODE_EXTRA_CA_CERTS =", certPath);
+  context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
+  context.log("REQUEST BODY:", JSON.stringify(req.body));
 
   try {
-    const { input } = req.body || {};
+    const clientId = process.env.CLIENT_ID;
+    const clientSecret = process.env.CLIENT_SECRET;
+    const tokenUrl = process.env.TOKEN_URL;
+    const scope = process.env.SCOPE;
+    const gatewayUrl = process.env.GATEWAY_URL;
 
-    if (!input) {
+    const userInput =
+      req.body?.input ||
+      req.body?.message ||
+      req.body?.text ||
+      req.body?.prompt ||
+      (typeof req.body === "string" ? req.body : null);
+
+    context.log("USER INPUT:", userInput);
+
+    if (!userInput) {
       context.res = {
         status: 400,
-        headers,
-        body: { error: "Missing input" }
+        body: { error: "Missing input", receivedBody: req.body }
       };
       return;
     }
 
-    const certPath = "/home/site/wwwroot/coach/rootca.cer";
-    const gatewayUrl = process.env.GAIA_GATEWAY_URL;
-    const jwt = process.env.GAIA_JWT;
-    const appName = process.env.GAIA_APP_NAME;
-    const modelName = process.env.GAIA_MODEL_NAME;
-    const partnerName = process.env.GAIA_PARTNER_NAME;
-    const clientId = process.env.GAIA_CLIENT_ID;
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-    // ===== DEBUG LOGS =====
-    context.log("===== GAIA DEBUG START =====");
+    context.log("ABOUT TO REQUEST TOKEN:", tokenUrl);
 
-    context.log("GAIA_GATEWAY_URL:", gatewayUrl);
-    context.log("GAIA_APP_NAME:", appName);
-    context.log("GAIA_MODEL_NAME:", modelName);
-    context.log("GAIA_PARTNER_NAME:", partnerName);
-    context.log("GAIA_CLIENT_ID:", clientId);
+    const tokenResp = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: `grant_type=client_credentials&scope=${encodeURIComponent(scope)}`
+    });
 
-    context.log("JWT length:", jwt ? jwt.length : "missing");
-    context.log("JWT starts with:", jwt ? jwt.substring(0, 20) : "missing");
+    const tokenText = await tokenResp.text();
+    context.log("TOKEN STATUS:", tokenResp.status);
 
-    context.log("Cert exists:", fs.existsSync(certPath));
+    const tokenJson = JSON.parse(tokenText);
+    const accessToken = tokenJson.access_token;
 
-    context.log("===== GAIA DEBUG END =====");
-    // ======================
-
-    if (!gatewayUrl || !jwt || !appName || !modelName || !partnerName || !clientId) {
-      context.res = {
-        status: 500,
-        headers,
-        body: {
-          error: "Missing required app settings"
-        }
-      };
-      return;
+    if (!accessToken) {
+      throw new Error("Token response did not include access_token");
     }
 
-    const caCert = fs.readFileSync(certPath, "utf8");
+    context.log("TOKEN RECEIVED: yes");
 
-    const payload = JSON.stringify({
-      sessionId: "test",
+    const gatewayPayload = {
       provider: "openai",
+      sessionId: "storyline-session",
       messages: [
         {
           role: "user",
-          content: input
+          id: null,
+          content: userInput
         }
-      ]
-    });
-
-    const url = new URL(gatewayUrl);
-
-    const options = {
-      protocol: url.protocol,
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname,
-      method: "POST",
-      ca: caCert,
-      headers: {
-        "Authorization": `Bearer ${jwt}`,
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload),
-        "x-app-name": appName,
-        "x-model-name": modelName,
-        "x-partner-name": partnerName,
-        "x-client-id": clientId
-      }
+      ],
+      temperature: 0.0,
+      scrub_pii: true
     };
 
-    context.log("Sending headers:", {
-      "x-app-name": appName,
-      "x-model-name": modelName,
-      "x-partner-name": partnerName,
-      "x-client-id": clientId
-    });
+    context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
 
-    const result = await new Promise((resolve, reject) => {
-      const request = https.request(options, (response) => {
-        let body = "";
+    const ca = fs.readFileSync(certPath, "utf8");
 
-        response.on("data", (chunk) => {
-          body += chunk;
-        });
+    const gatewayResult = await httpsPost(
+      gatewayUrl,
+      {
+        Authorization: `Bearer ${accessToken}`,
+        "x-app-name": "Articulate-Storyline",
+        "x-model-name": "gpt-5",
+        "x-partner-name": "IDStorylineLLMNpr",
+        "Content-Type": "application/json"
+      },
+      JSON.stringify(gatewayPayload),
+      ca
+    );
 
-        response.on("end", () => {
-          resolve({
-            statusCode: response.statusCode || 500,
-            body
-          });
-        });
-      });
+    context.log("GATEWAY STATUS:", gatewayResult.status);
+    context.log("GATEWAY RESPONSE:", gatewayResult.body);
 
-      request.on("error", reject);
-      request.write(payload);
-      request.end();
-    });
-
-    context.log("GAIA raw response:", result.body);
-
-    let data;
-    try {
-      data = JSON.parse(result.body);
-    } catch {
-      data = { raw: result.body };
-    }
+    const gatewayJson = JSON.parse(gatewayResult.body);
 
     context.res = {
-      status: result.statusCode,
-      headers,
+      status: gatewayResult.status,
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: {
-        debug: true,
-        gaiaResponse: data
+        gaiaResponse: {
+          result: gatewayJson.result
+        }
       }
     };
 
   } catch (error) {
-    context.log("Full error:", error);
+    context.log.error("AZURE FUNCTION ERROR MESSAGE:", error.message);
+    context.log.error("AZURE FUNCTION ERROR CAUSE:", error.cause);
+    context.log.error("AZURE FUNCTION ERROR STACK:", error.stack);
 
     context.res = {
       status: 500,
-      headers,
       body: {
-        error: error.message
+        error: error.message,
+        cause: error.cause?.message || null
       }
     };
   }
