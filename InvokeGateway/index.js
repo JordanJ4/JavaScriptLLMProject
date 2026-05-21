@@ -35,6 +35,7 @@ module.exports = async function (context, req) {
 
   context.log("NODE_EXTRA_CA_CERTS =", certPath);
   context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
+  context.log("REQUEST BODY:", JSON.stringify(req.body));
 
   try {
     const clientId = process.env.CLIENT_ID;
@@ -43,12 +44,19 @@ module.exports = async function (context, req) {
     const scope = process.env.SCOPE;
     const gatewayUrl = process.env.GATEWAY_URL;
 
-    const userInput = req.body?.input;
+    const userInput =
+      req.body?.input ||
+      req.body?.message ||
+      req.body?.text ||
+      req.body?.prompt ||
+      (typeof req.body === "string" ? req.body : null);
+
+    context.log("USER INPUT:", userInput);
 
     if (!userInput) {
       context.res = {
         status: 400,
-        body: { error: "Missing input" }
+        body: { error: "Missing input", receivedBody: req.body }
       };
       return;
     }
@@ -83,7 +91,7 @@ module.exports = async function (context, req) {
       sessionId: "storyline-session",
       messages: [
         {
-          role: "system",
+          role: "user",
           id: null,
           content: userInput
         }
