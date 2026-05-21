@@ -1,8 +1,11 @@
 const fs = require("fs");
+const { Agent } = require("undici");
 
 module.exports = async function (context, req) {
-  context.log("NODE_EXTRA_CA_CERTS =", process.env.NODE_EXTRA_CA_CERTS);
-  context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
+  const certPath = process.env.NODE_EXTRA_CA_CERTS;
+
+  context.log("NODE_EXTRA_CA_CERTS =", certPath);
+  context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
 
   try {
     const clientId = process.env.CLIENT_ID;
@@ -20,6 +23,14 @@ module.exports = async function (context, req) {
       };
       return;
     }
+
+    const caCert = fs.readFileSync(certPath, "utf8");
+
+    const dispatcher = new Agent({
+      connect: {
+        ca: caCert
+      }
+    });
 
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
@@ -64,6 +75,7 @@ module.exports = async function (context, req) {
 
     const gatewayResp = await fetch(gatewayUrl, {
       method: "POST",
+      dispatcher,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-app-name": "IDStoryLine",
@@ -79,9 +91,7 @@ module.exports = async function (context, req) {
 
     context.res = {
       status: gatewayResp.status,
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: gatewayText
     };
 
