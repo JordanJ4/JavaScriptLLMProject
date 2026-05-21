@@ -5,11 +5,13 @@ module.exports = async function (context, req) {
     context.log("CERT EXISTS =", fs.existsSync(process.env.NODE_EXTRA_CA_CERTS || ""));
 
     async function getAccessToken() {
+        context.log("ABOUT TO REQUEST TOKEN:", process.env.TOKEN_URL);
+
         const encoded = Buffer.from(
             `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
         ).toString("base64");
 
-        const response = await fetch(process.env.TOKEN_URL, {
+        const tokenResponse = await fetch(process.env.TOKEN_URL, {
             method: "POST",
             headers: {
                 "Authorization": `Basic ${encoded}`,
@@ -21,14 +23,23 @@ module.exports = async function (context, req) {
             })
         });
 
-        const text = await response.text();
+        const tokenText = await tokenResponse.text();
 
-        if (!response.ok) {
-            throw new Error(`Token request failed ${response.status}: ${text}`);
+        context.log("TOKEN STATUS:", tokenResponse.status);
+
+        if (!tokenResponse.ok) {
+            throw new Error(`Token request failed ${tokenResponse.status}: ${tokenText}`);
         }
 
-        const data = JSON.parse(text);
-        return data.access_token;
+        const tokenData = JSON.parse(tokenText);
+
+        if (!tokenData.access_token) {
+            throw new Error("Token response did not include access_token");
+        }
+
+        context.log("TOKEN RECEIVED: yes");
+
+        return tokenData.access_token;
     }
 
     try {
@@ -42,13 +53,15 @@ module.exports = async function (context, req) {
             return;
         }
 
-        const token = await getAccessToken();
-
         const gatewayUrl = process.env.GATEWAY_URL;
 
         if (!gatewayUrl) {
             throw new Error("GATEWAY_URL environment variable missing");
         }
+
+        const token = await getAccessToken();
+
+        context.log("ABOUT TO CALL GATEWAY:", gatewayUrl);
 
         const gatewayResponse = await fetch(gatewayUrl, {
             method: "POST",
@@ -61,14 +74,16 @@ module.exports = async function (context, req) {
             })
         });
 
-        const responseText = await gatewayResponse.text();
+        const gatewayText = await gatewayResponse.text();
+
+        context.log("GATEWAY STATUS:", gatewayResponse.status);
 
         context.res = {
             status: gatewayResponse.status,
             headers: {
                 "Content-Type": "application/json"
             },
-            body: responseText
+            body: gatewayText
         };
 
     } catch (error) {
