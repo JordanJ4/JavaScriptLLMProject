@@ -31,7 +31,9 @@ function httpsPost(url, headers, body, ca) {
 }
 
 module.exports = async function (context, req) {
-  const certPath = process.env.NODE_EXTRA_CA_CERTS;
+  const certPath =
+    process.env.NODE_EXTRA_CA_CERTS ||
+    "/home/site/wwwroot/coach/rootca-bundle.cer";
 
   context.log("NODE_EXTRA_CA_CERTS =", certPath);
   context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
@@ -43,6 +45,27 @@ module.exports = async function (context, req) {
     const tokenUrl = process.env.TOKEN_URL;
     const scope = process.env.SCOPE;
     const gatewayUrl = process.env.GATEWAY_URL;
+
+    const requiredSettings = {
+      CLIENT_ID: clientId,
+      CLIENT_SECRET: clientSecret,
+      TOKEN_URL: tokenUrl,
+      SCOPE: scope,
+      GATEWAY_URL: gatewayUrl,
+      NODE_EXTRA_CA_CERTS: certPath
+    };
+
+    const missingSettings = Object.entries(requiredSettings)
+      .filter(([key, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingSettings.length > 0) {
+      throw new Error(`Missing required app settings: ${missingSettings.join(", ")}`);
+    }
+
+    if (!fs.existsSync(certPath)) {
+      throw new Error(`Certificate file not found at path: ${certPath}`);
+    }
 
     const userInput =
       req.body?.input ||
@@ -77,6 +100,10 @@ module.exports = async function (context, req) {
     const tokenText = await tokenResp.text();
     context.log("TOKEN STATUS:", tokenResp.status);
 
+    if (!tokenResp.ok) {
+      throw new Error(`Token request failed. Status: ${tokenResp.status}. Body: ${tokenText}`);
+    }
+
     const tokenJson = JSON.parse(tokenText);
     const accessToken = tokenJson.access_token;
 
@@ -108,9 +135,9 @@ module.exports = async function (context, req) {
       gatewayUrl,
       {
         Authorization: `Bearer ${accessToken}`,
-        "x-app-name": "Articulate-Storyline",
-        "x-model-name": "gpt-5-mini",
-        "x-partner-name": "IDStorylineLLMNpr",
+        "x-app-name": process.env.GAIA_APP_NAME || "Articulate-Storyline",
+        "x-model-name": process.env.GAIA_MODEL_NAME || "gpt-5-mini",
+        "x-partner-name": process.env.GAIA_PARTNER_NAME || "IDStoryLineLLmProd",
         "Content-Type": "application/json"
       },
       JSON.stringify(gatewayPayload),
@@ -120,7 +147,12 @@ module.exports = async function (context, req) {
     context.log("GATEWAY STATUS:", gatewayResult.status);
     context.log("GATEWAY RESPONSE:", gatewayResult.body);
 
-    const gatewayJson = JSON.parse(gatewayResult.body);
+    let gatewayJson;
+    try {
+      gatewayJson = JSON.parse(gatewayResult.body);
+    } catch {
+      gatewayJson = { rawResponse: gatewayResult.body };
+    }
 
     context.res = {
       status: gatewayResult.status,
@@ -129,11 +161,10 @@ module.exports = async function (context, req) {
       },
       body: {
         gaiaResponse: {
-          result: gatewayJson.result
+          result: gatewayJson.result || gatewayJson.rawResponse || gatewayJson
         }
       }
     };
-
   } catch (error) {
     context.log.error("AZURE FUNCTION ERROR MESSAGE:", error.message);
     context.log.error("AZURE FUNCTION ERROR CAUSE:", error.cause);
