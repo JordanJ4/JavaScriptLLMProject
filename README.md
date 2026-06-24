@@ -152,7 +152,7 @@ This means requests must include a valid Azure Function key.
 
 Requests can authenticate using either:
 
-### URL Method
+### URL Method (to be adjusted for Prod)
 
 ```text
 https://<functionapp>.azurewebsites.net/api/coach?code=FUNCTION_KEY
