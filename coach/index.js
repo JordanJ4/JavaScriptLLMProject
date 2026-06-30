@@ -137,18 +137,19 @@ module.exports = async function (context, req) {
 
     const ca = fs.readFileSync(certPath, "utf8");
 
-    const gatewayResult = await httpsPost(
-      gatewayUrl,
-      {
-        Authorization: `Bearer ${accessToken}`,
-        "x-client-id": gaiaClientId,
-        "x-app-name": gaiaAppName,
-        "x-model-name": gaiaModelName,
-        "Content-Type": "application/json"
-      },
-      JSON.stringify(gatewayPayload),
-      ca
-    );
+   const gatewayResult = await httpsPost(
+  gatewayUrl,
+  {
+    Authorization: `Bearer ${accessToken}`,
+    "x-client-id": process.env.GAIA_CLIENT_ID || "IDStoryLineLLmProd",
+    "x-app-name": process.env.GAIA_APP_NAME || "Articulate-Storyline",
+    "x-model-name": process.env.GAIA_MODEL_NAME || "gpt-5-mini",
+    "x-partner-name": process.env.GAIA_PARTNER_NAME || "asurion",
+    "Content-Type": "application/json"
+  },
+  JSON.stringify(gatewayPayload),
+  ca
+);
 
     context.log("GATEWAY STATUS:", gatewayResult.status);
     context.log("GATEWAY RESPONSE:", gatewayResult.body);
