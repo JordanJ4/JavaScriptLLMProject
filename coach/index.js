@@ -45,6 +45,9 @@ module.exports = async function (context, req) {
     const tokenUrl = process.env.TOKEN_URL;
     const scope = process.env.SCOPE;
     const gatewayUrl = process.env.GATEWAY_URL;
+    const gaiaClientId = process.env.GAIA_CLIENT_ID || "IDStoryLineLLmProd";
+    const gaiaAppName = process.env.GAIA_APP_NAME || "Articulate-Storyline";
+    const gaiaModelName = process.env.GAIA_MODEL_NAME || "gpt-5-mini";
 
     const requiredSettings = {
       CLIENT_ID: clientId,
@@ -52,7 +55,10 @@ module.exports = async function (context, req) {
       TOKEN_URL: tokenUrl,
       SCOPE: scope,
       GATEWAY_URL: gatewayUrl,
-      NODE_EXTRA_CA_CERTS: certPath
+      NODE_EXTRA_CA_CERTS: certPath,
+      GAIA_CLIENT_ID: gaiaClientId,
+      GAIA_APP_NAME: gaiaAppName,
+      GAIA_MODEL_NAME: gaiaModelName
     };
 
     const missingSettings = Object.entries(requiredSettings)
@@ -135,9 +141,9 @@ module.exports = async function (context, req) {
       gatewayUrl,
       {
         Authorization: `Bearer ${accessToken}`,
-        "x-app-name": process.env.GAIA_APP_NAME || "Articulate-Storyline",
-        "x-model-name": process.env.GAIA_MODEL_NAME || "gpt-5-mini",
-        "x-partner-name": process.env.GAIA_PARTNER_NAME || "IDStoryLineLLmProd",
+        "x-client-id": gaiaClientId,
+        "x-app-name": gaiaAppName,
+        "x-model-name": gaiaModelName,
         "Content-Type": "application/json"
       },
       JSON.stringify(gatewayPayload),
