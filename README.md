@@ -54,9 +54,11 @@ AI Response Returned to Storyline
 | Setting           | Value                      |
 | ----------------- | -------------------------- |
 | Function App Name | javascriptazurellmproject2 |
-| Runtime           | Node.js                    |
+| Runtime           | Node.js 20.x               |
 | Hosting           | Azure Functions            |
 | Endpoint          | /api/coach                 |
+
+> Confirm the Function App's configured Node version matches the workflow `NODE_VERSION` (currently 20.x in both dev and prod workflows).
 
 ## Resource Group
 
@@ -73,10 +75,20 @@ East US
 ```text
 .github/
   workflows/
-    azure-function-deploy.yml
+    azure-functions.yml        # dev deploy (push to main)
+    azure-functions-prod.yml   # prod deploy (manual: workflow_dispatch)
 
-api/
-  coach.js
+coach/
+  index.js                     # main function (wraps response as gaiaResponse)
+  function.json                # httpTrigger config, authLevel: function
+  rootca-bundle.cer            # CA bundle for the enterprise gateway
+
+InvokeGateway/
+  index.js                     # secondary function (returns raw gateway body)
+  function.json                # httpTrigger config, authLevel: function
+
+shared/
+  gatewayClient.js             # shared OAuth token + gateway call + CORS helpers
 
 host.json
 package.json
@@ -85,12 +97,15 @@ README.md
 
 ## Important Files
 
-| File                      | Purpose                            |
-| ------------------------- | ---------------------------------- |
-| coach.js                  | Main Azure Function logic          |
-| package.json              | Node.js dependencies               |
-| host.json                 | Azure Functions configuration      |
-| azure-function-deploy.yml | GitHub Actions deployment workflow |
+| File                        | Purpose                                             |
+| --------------------------- | --------------------------------------------------- |
+| coach/index.js              | Main Azure Function logic (Storyline endpoint)      |
+| InvokeGateway/index.js      | Secondary endpoint; returns raw gateway response    |
+| shared/gatewayClient.js     | Shared token/gateway/CORS logic used by both        |
+| package.json                | Node.js dependencies & metadata                     |
+| host.json                   | Azure Functions configuration                       |
+| azure-functions.yml         | GitHub Actions dev deployment workflow              |
+| azure-functions-prod.yml    | GitHub Actions prod deployment workflow (manual)    |
 
 ---
 
@@ -103,7 +118,7 @@ Deployment is handled through GitHub Actions.
 ## Deployment Flow
 
 ```text
-Developer Pushes Code to GitHub
+Developer Pushes Code to GitHub (main)
         ↓
 GitHub Actions Triggered
         ↓
@@ -114,25 +129,19 @@ Function App Packaged
 Deployment to Azure Function App
 ```
 
-## GitHub Actions Workflow
+## GitHub Actions Workflows
 
-Workflow location:
-
-```text
-.github/workflows/
-```
+| Workflow                   | Trigger                     | Target App                 |
+| -------------------------- | --------------------------- | -------------------------- |
+| azure-functions.yml        | push to `main`              | javascriptazurellmproject2 |
+| azure-functions-prod.yml   | manual (`workflow_dispatch`)| Articulate-Storyline       |
 
 Primary responsibilities:
 
 * Checkout repository
 * Install dependencies
-* Build/package application
-* Authenticate to Azure
+* Authenticate to Azure (publish profile secret)
 * Deploy Azure Function
-
-## Deployment Trigger
-
-Document deployment branch here (example: main).
 
 ---
 
@@ -140,10 +149,10 @@ Document deployment branch here (example: main).
 
 ## Function Authorization Level
 
-The Azure Function uses:
+Both functions use:
 
 ```text
-Function-level authorization
+Function-level authorization  (authLevel: "function")
 ```
 
 This means requests must include a valid Azure Function key.
@@ -152,7 +161,7 @@ This means requests must include a valid Azure Function key.
 
 Requests can authenticate using either:
 
-### URL Method (to be adjusted for Prod)
+### URL Method
 
 ```text
 https://<functionapp>.azurewebsites.net/api/coach?code=FUNCTION_KEY
@@ -172,11 +181,21 @@ Do NOT:
 * Share Function keys publicly
 * Switch the Function App to Anonymous unless approved
 
+## Known Limitation: Client-Side Function Key
+
+Because the Storyline course calls the function from the browser, the Function
+key is visible in the published course's client-side JavaScript. Function-level
+auth therefore stops casual/drive-by abuse and lets you rotate a leaked key
+quickly, but it is **not** a true secret in this setup.
+
+Mitigations in place / recommended:
+
+* Restrict CORS to your Storyline/LMS domain (see `ALLOWED_ORIGIN` below and the
+  Azure Portal CORS settings)
+* Rotate the Function key if it is exposed
+* (Long term) move to an authenticated backend proxy so the key stays server-side
+
 ## Recommended Long-Term Security Improvement
-
-Current implementation may expose the Function key client-side within Storyline JavaScript.
-
-Recommended future architecture:
 
 ```text
 Storyline
@@ -197,9 +216,9 @@ This would keep Function keys server-side only.
 ## Authentication Flow
 
 1. Azure Function receives request from Storyline
-2. Function generates or retrieves OAuth token
-3. Function authenticates against enterprise gateway
-4. Request is forwarded to LLM Gateway
+2. Function requests an OAuth token (client credentials grant)
+3. Function authenticates against the enterprise gateway
+4. Request is forwarded to the LLM Gateway
 5. AI response returned to Storyline
 
 ## Required Credentials
@@ -211,6 +230,7 @@ The following values are required:
 | CLIENT_ID     | OAuth client ID      |
 | CLIENT_SECRET | OAuth client secret  |
 | TOKEN_URL     | OAuth token endpoint |
+| SCOPE         | OAuth scope          |
 | GATEWAY_URL   | LLM Gateway endpoint |
 
 Store these securely within:
@@ -238,6 +258,8 @@ fetch(FUNCTION_URL, {
   },
   body: JSON.stringify({
     input: p.GetVar("user_input")
+    // Optional: pass a stable sessionId to keep a conversation together, e.g.
+    // sessionId: p.GetVar("session_id")
   })
 })
 .then(function(r) {
@@ -274,7 +296,11 @@ fetch(FUNCTION_URL, {
 }
 ```
 
-## Example Response
+The function also accepts `message`, `text`, or `prompt` in place of `input`,
+and an optional `sessionId` to maintain a multi-turn conversation. If no
+`sessionId` is supplied, each request is isolated with a generated id.
+
+## Example Response (coach)
 
 ```json
 {
@@ -290,14 +316,15 @@ fetch(FUNCTION_URL, {
 
 ## Azure Application Settings
 
-Document actual values/setting names here.
-
-| Variable      | Purpose              |
-| ------------- | -------------------- |
-| CLIENT_ID     | OAuth authentication |
-| CLIENT_SECRET | OAuth authentication |
-| TOKEN_URL     | OAuth token endpoint |
-| GATEWAY_URL   | AI gateway endpoint  |
+| Variable            | Purpose                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| CLIENT_ID           | OAuth authentication                                                |
+| CLIENT_SECRET       | OAuth authentication                                                |
+| TOKEN_URL           | OAuth token endpoint                                                |
+| SCOPE               | OAuth scope                                                         |
+| GATEWAY_URL         | AI gateway endpoint                                                 |
+| NODE_EXTRA_CA_CERTS | Path to the CA bundle used to trust the enterprise gateway cert     |
+| ALLOWED_ORIGIN      | (Optional) Origin allowed via CORS; defaults to `*` if unset        |
 
 ---
 
@@ -309,6 +336,9 @@ Document actual values/setting names here.
 * Application Insights
 * GitHub Actions logs
 * Gateway response logging
+
+> Note: verbose logging of raw learner input has been removed from the function
+> code to reduce PII exposure. Errors are still logged.
 
 ## Recommended Monitoring
 
@@ -331,8 +361,8 @@ Cause:
 
 Resolution:
 
-* Verify ?code=FUNCTION_KEY
-* Verify x-functions-key header
+* Verify `?code=FUNCTION_KEY`
+* Verify `x-functions-key` header
 * Regenerate Function key if needed
 
 ---
@@ -345,7 +375,8 @@ Cause:
 
 Resolution:
 
-* Add domain under Azure Function App CORS settings
+* Add the domain under Azure Function App CORS settings
+* Optionally set `ALLOWED_ORIGIN` to that domain
 
 ---
 
@@ -359,7 +390,7 @@ Cause:
 Resolution:
 
 * Verify CLIENT_ID and CLIENT_SECRET
-* Verify token endpoint
+* Verify token endpoint (TOKEN_URL) and SCOPE
 * Regenerate credentials if necessary
 
 ---
@@ -400,7 +431,8 @@ Settings → Secrets and Variables → Actions
 
 ## Redeploy Application
 
-Push changes to deployment branch or manually trigger GitHub Actions workflow.
+Push changes to `main` (dev) or manually run the prod workflow via
+`workflow_dispatch`.
 
 ---
 
