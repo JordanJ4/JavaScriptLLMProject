@@ -1,5 +1,6 @@
 const fs = require("fs");
 const https = require("https");
+const crypto = require("crypto");
 
 function httpsPost(url, headers, body, ca) {
   return new Promise((resolve, reject) => {
@@ -37,7 +38,6 @@ module.exports = async function (context, req) {
 
   context.log("NODE_EXTRA_CA_CERTS =", certPath);
   context.log("CERT EXISTS =", fs.existsSync(certPath || ""));
-  context.log("REQUEST BODY:", JSON.stringify(req.body));
 
   try {
     const clientId = process.env.CLIENT_ID;
@@ -80,7 +80,6 @@ module.exports = async function (context, req) {
       req.body?.prompt ||
       (typeof req.body === "string" ? req.body : null);
 
-    context.log("USER INPUT:", userInput);
 
     if (!userInput) {
       context.res = {
@@ -121,7 +120,7 @@ module.exports = async function (context, req) {
 
     const gatewayPayload = {
       provider: "openai",
-      sessionId: "storyline-session",
+      sessionId: req.body?.sessionId || `storyline-${crypto.randomUUID()}`,
       messages: [
         {
           role: "user",
@@ -152,7 +151,6 @@ module.exports = async function (context, req) {
 );
 
     context.log("GATEWAY STATUS:", gatewayResult.status);
-    context.log("GATEWAY RESPONSE:", gatewayResult.body);
 
     let gatewayJson;
     try {
