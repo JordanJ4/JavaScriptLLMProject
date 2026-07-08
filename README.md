@@ -128,6 +128,79 @@ regenerated, so update the secret if a deploy starts failing auth.
 
 ---
 
+# Updating the Code (Step by Step)
+
+This section is for anyone new to GitHub. There are two environments:
+
+* **Non-production (dev):** app `javascriptazurellmproject2`, built from the `main`
+  branch, and it updates **automatically**.
+* **Production:** app `Articulate-Storyline`, built from the `Prod` branch, and it
+  updates **only when you run the deploy by hand**.
+
+Always change non-production first, test it, then move the same change to production.
+
+## How to update the NON-PRODUCTION (dev) code
+
+1. Open the repository on GitHub and switch the branch dropdown to `main`.
+2. Open the file you want to change (for example `coach/index.js`) and click the
+   pencil (Edit) icon.
+3. Make your edit.
+4. At the bottom, under "Commit changes", type a short message describing what you
+   changed, leave "Commit directly to the main branch" selected, and click
+   **Commit changes**.
+5. That's it — saving to `main` automatically starts a deployment. Watch it under the
+   **Actions** tab; a green check mark means it published to the dev app.
+6. Test the dev app (see the maintainer guide / "How to Check It Is Working").
+
+## How to update the PRODUCTION code
+
+Production does **not** update on its own. First you get your change onto the `Prod`
+branch, then you run the deploy by hand.
+
+**Step 1 — get the change onto `Prod`** (pick one):
+
+* If it is already tested on `main`: open a Pull Request from `main` into `Prod`
+  (Pull requests -> New pull request -> base: `Prod`, compare: `main` -> Create ->
+  Merge), **or**
+* Edit the file directly on `Prod` the same way as above, but switch the branch
+  dropdown to `Prod` **before** you edit.
+
+**Step 2 — deploy to production (manual):**
+
+1. Go to the **Actions** tab.
+2. Click the workflow "Build and deploy PROD Node.js Azure Function App".
+3. Click **Run workflow**, and in the branch dropdown **select `Prod`** (important),
+   then confirm.
+4. Wait for the green check mark, then test the production app.
+
+> Saving code to `Prod` does NOT make it live by itself. Production only changes when
+> you run the workflow above.
+
+## Do's and Don'ts (for anyone new to GitHub / GitHub Actions)
+
+**Do:**
+
+* Do make and test changes on `main` (dev) before touching production.
+* Do write a short, clear commit message so others know what changed.
+* Do use the **Actions** tab to confirm a deploy finished — green check = success,
+  red X = failed (click it to read the error).
+* Do keep secrets (Client ID/Secret, keys) in Azure Application Settings — never type
+  them into code, commit messages, or issues.
+* Do ask the contacts in the maintainer guide if you are unsure.
+
+**Don't:**
+
+* Don't run the production workflow from any branch other than `Prod`. (It is guarded
+  to do nothing if run elsewhere, but always pick `Prod` anyway.)
+* Don't paste passwords, tokens, Client Secrets, or function keys anywhere in the repo.
+* Don't edit files under `.github/workflows/` unless you understand them — those
+  control deployment.
+* Don't assume editing a file publishes it — production still needs the manual deploy.
+* Don't delete the `main` or `Prod` branches.
+* Don't force-push or rewrite history unless you are comfortable with Git.
+
+---
+
 # Authentication & Security
 
 ## Current state of the `coach` endpoint
