@@ -62,7 +62,7 @@ AI Response Returned to Storyline
 
 ## Resource Group
 
-Document actual resource group name here.
+Articulate-Storyline_group
 
 ## Region
 
